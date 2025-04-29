@@ -1,5 +1,6 @@
 import happybase
 import pandas as pd
+from datetime import datetime
 
 # Bloque principal de ejecución
 try:
@@ -7,12 +8,12 @@ try:
     connection = happybase.Connection('localhost')
     print("Conexión establecida con HBase")
 
-    # 2. Crear la tabla con familias de columnas
-    table_name = 'sector_publico'
+    # 2. Crear la tabla con las familias de columnas
+    table_name = 'sector_solidario'
     families = {
-        'info': dict(),       # Información básica de la entidad
-        'ubicacion': dict(),  # Ubicación geográfica
-        'clasificacion': dict()  # Tipo o clasificación
+        'info': dict(),        # Información básica de la entidad
+        'ubicacion': dict(),   # Ubicación geográfica
+        'clasificacion': dict() # Tipo de entidad y sector
     }
 
     # Eliminar la tabla si ya existe
@@ -23,27 +24,28 @@ try:
     # Crear nueva tabla
     connection.create_table(table_name, families)
     table = connection.table(table_name)
-    print("Tabla 'sector_publico' creada exitosamente")
+    print("Tabla 'sector_solidario' creada exitosamente")
 
     # 3. Cargar datos del CSV
-    entidades = pd.read_csv('entidades_sector_publico.csv')  # Cambia al nombre de tu archivo
-
+    solidario_data = pd.read_csv('entidades_sector_solidario.csv')  # Asegúrate del nombre del archivo
+    
     # Iterar sobre el DataFrame usando el índice
-    for index, row in entidades.iterrows():
+    for index, row in solidario_data.iterrows():
         # Generar row key basado en el NIT
         row_key = f'entidad_{index}'.encode()
-
+        
         # Organizar los datos en familias de columnas
         data = {
-            b'info:nombre': str(row['NOMBRE_ENTIDAD']).encode(),
-            b'info:nit': str(row['NIT_ENTIDAD']).encode(),
+            b'info:nombre': str(row['Nombre Entidad']).encode(),
+            b'info:nit': str(row['NIT']).encode(),
             
-            b'ubicacion:departamento': str(row['DEPARTAMENTO']).encode(),
-            b'ubicacion:municipio': str(row['MUNICIPIO']).encode(),
+            b'ubicacion:departamento': str(row['Departamento']).encode(),
+            b'ubicacion:municipio': str(row['Municipio']).encode(),
             
-            b'clasificacion:tipo_entidad': str(row['TIPO_ENTIDAD']).encode()
+            b'clasificacion:tipo_entidad': str(row['Tipo Entidad']).encode(),
+            b'clasificacion:sector': str(row['Sector Económico']).encode()
         }
-
+        
         table.put(row_key, data)
     
     print("Datos cargados exitosamente")
@@ -54,23 +56,40 @@ try:
     for key, data in table.scan():
         if count < 3:
             print(f"\nEntidad ID: {key.decode()}")
-            print(f"Nombre: {data.get(b'info:nombre', b'').decode()}")
-            print(f"Departamento: {data.get(b'ubicacion:departamento', b'').decode()}")
-            print(f"Tipo de Entidad: {data.get(b'clasificacion:tipo_entidad', b'').decode()}")
+            print(f"Nombre: {data[b'info:nombre'].decode()}")
+            print(f"NIT: {data[b'info:nit'].decode()}")
+            print(f"Departamento: {data[b'ubicacion:departamento'].decode()}")
+            print(f"Tipo de Entidad: {data[b'clasificacion:tipo_entidad'].decode()}")
             count += 1
 
-    # 5. Contar entidades por departamento
+    # 5. Análisis: Número de entidades por departamento
     print("\n=== Número de entidades por departamento ===")
     depto_stats = {}
     for key, data in table.scan():
         depto = data.get(b'ubicacion:departamento', b'').decode()
         depto_stats[depto] = depto_stats.get(depto, 0) + 1
-
+    
     for depto, count in depto_stats.items():
         print(f"{depto}: {count} entidades")
+
+    # 6. Análisis: Tipos de entidad más frecuentes
+    print("\n=== Tipos de entidad más comunes ===")
+    tipo_stats = {}
+    for key, data in table.scan():
+        tipo = data.get(b'clasificacion:tipo_entidad', b'').decode()
+        tipo_stats[tipo] = tipo_stats.get(tipo, 0) + 1
+    
+    for tipo, count in tipo_stats.items():
+        print(f"{tipo}: {count} entidades")
+
+    # 7. Ejemplo de actualización de un registro
+    entidad_to_update = 'entidad_0'
+    nuevo_sector = 'Sector Financiero'
+    table.put(entidad_to_update.encode(), {b'clasificacion:sector': nuevo_sector.encode()})
+    print(f"\nSector actualizado para la entidad ID: {entidad_to_update}")
 
 except Exception as e:
     print(f"Error: {str(e)}")
 finally:
     # Cerrar la conexión
-    connection.close()ii
+    connection.close()
