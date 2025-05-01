@@ -1,0 +1,77 @@
+import happybase
+import pandas as pd
+
+try:
+    # 1. Conectar a HBase
+    connection = happybase.Connection('localhost')
+    print("Conexión establecida con HBase")
+
+    # 2. Crear la tabla
+    table_name = 'matriculados'
+    families = {
+        'institucion': dict(),
+        'ubicacion': dict(),
+        'detalles': dict()
+    }
+
+    if table_name.encode() in connection.tables():
+        print(f"Eliminando tabla existente - {table_name}")
+        connection.delete_table(table_name, disable=True)
+
+    connection.create_table(table_name, families)
+    table = connection.table(table_name)
+    print("Tabla 'matriculados' creada exitosamente")
+
+    # 3. Cargar datos CSV
+    df = pd.read_csv('5bvz-s9b2.csv')
+    df.fillna('', inplace=True)
+
+    # 4. Insertar datos en HBase
+    for index, row in df.iterrows():
+        row_key = f"mat_{index}".encode()
+
+        data = {
+            b'institucion:nombre': str(row['Nombre del Establecimiento']).encode(),
+            b'institucion:sector': str(row['Sector']).encode(),
+            b'detalles:anio': str(row['Año']).encode(),
+            b'detalles:nivel': str(row['Nivel']).encode(),
+            b'detalles:matriculados': str(row['Total Matriculados']).encode(),
+            b'ubicacion:departamento': str(row['Departamento']).encode(),
+            b'ubicacion:municipio': str(row['Municipio']).encode()
+        }
+
+        table.put(row_key, data)
+
+    print("Datos cargados exitosamente en HBase")
+
+    # 5. Consultas
+    print("\n=== Primeros 3 registros ===")
+    count = 0
+    for key, data in table.scan():
+        if count < 3:
+            print(f"\nID: {key.decode()}")
+            print(f"Institución: {data[b'institucion:nombre'].decode()}")
+            print(f"Año: {data[b'detalles:anio'].decode()}")
+            print(f"Matriculados: {data[b'detalles:matriculados'].decode()}")
+            count += 1
+
+    # 6. Total de matriculados por municipio (ejemplo básico)
+    print("\n=== Total de matriculados por municipio ===")
+    municipio_totales = {}
+    for key, data in table.scan():
+        municipio = data[b'ubicacion:municipio'].decode()
+        total = int(data[b'detalles:matriculados'].decode())
+        municipio_totales[municipio] = municipio_totales.get(municipio, 0) + total
+
+    for municipio, total in list(municipio_totales.items())[:5]:  # Mostramos solo 5
+        print(f"{municipio}: {total} matriculados")
+
+    # 7. Actualizar el número de matriculados en un registro
+    print("\n=== Actualización de ejemplo ===")
+    table.put(b'mat_0', {b'detalles:matriculados': b'999'})
+    print("Registro 'mat_0' actualizado con 999 matriculados")
+
+except Exception as e:
+    print(f"Error: {str(e)}")
+finally:
+    connection.close()
