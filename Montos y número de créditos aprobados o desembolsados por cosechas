@@ -1,0 +1,50 @@
+import happybase
+import pandas as pd
+
+# Establecer conexión con HBase
+connection = happybase.Connection('localhost')
+print("Conexión establecida con HBase")
+
+# Definir el nombre de la tabla y las familias de columnas
+table_name = 'creditos_cosechas'
+families = {
+    'entidad': dict(),     # Información sobre la entidad financiera
+    'credito': dict(),     # Detalles del crédito
+    'cosecha': dict()      # Información sobre la cosecha
+}
+
+# Eliminar la tabla si ya existe
+if table_name.encode() in connection.tables():
+    print(f"Eliminando tabla existente - {table_name}")
+    connection.delete_table(table_name, disable=True)
+
+# Crear nueva tabla
+connection.create_table(table_name, families)
+table = connection.table(table_name)
+print(f"Tabla '{table_name}' creada exitosamente")
+
+# Cargar datos del CSV
+data = pd.read_csv('rows.csv')
+
+# Iterar sobre el DataFrame usando el índice
+for index, row in data.iterrows():
+    # Generar row key basado en el índice
+    row_key = f'credito_{index}'.encode()
+    
+    # Organizar los datos en familias de columnas
+    record = {
+        b'entidad:tipo': str(row['NOMBRE_TIPO_ENTIDAD']).encode(),
+        b'entidad:nombre': str(row['NOMBRE_ENTIDAD']).encode(),
+        b'credito:fecha_corte': str(row['FECHA_CORTE']).encode(),
+        b'credito:codigo_renglon': str(row['CODIGO_RENGLON']).encode(),
+        b'credito:nombre_renglon': str(row['NOMBRE_RENGLON']).encode(),
+        b'credito:montos_aprobados': str(row['MONTOS_APROBADOS']).encode(),
+        b'credito:numero_creditos': str(row['NUMERO_CREDITOS']).encode()
+    }
+    
+    table.put(row_key, record)
+
+print("Datos cargados exitosamente")
+
+# Cerrar la conexión
+connection.close()
