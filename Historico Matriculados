@@ -2,76 +2,77 @@ import happybase
 import pandas as pd
 
 try:
-    # 1. Conectar a HBase
+    # 1. Establecer conexión con HBase
     connection = happybase.Connection('localhost')
     print("Conexión establecida con HBase")
 
-    # 2. Crear la tabla
-    table_name = 'matriculados'
+    # 2. Crear la tabla con familias de columnas
+    table_name = 'matricula_estudiantes'
     families = {
-        'institucion': dict(),
-        'ubicacion': dict(),
-        'detalles': dict()
+        'info_estudiante': dict(),     # País, ciudad y departamento de nacimiento
+        'info_academica': dict(),      # Programa, códigos académicos
+        'ingreso': dict()              # Periodo y año de ingreso
     }
 
+    # Eliminar la tabla si ya existe
     if table_name.encode() in connection.tables():
-        print(f"Eliminando tabla existente - {table_name}")
+        print(f"⚠ Eliminando tabla existente - {table_name}")
         connection.delete_table(table_name, disable=True)
 
     connection.create_table(table_name, families)
     table = connection.table(table_name)
-    print("Tabla 'matriculados' creada exitosamente")
+    print("Tabla 'matricula_estudiantes' creada exitosamente")
 
-    # 3. Cargar datos CSV
-    df = pd.read_csv('5bvz-s9b2.csv')
-    df.fillna('', inplace=True)
+    # 3. Cargar los datos del CSV
+    df = pd.read_csv('5bvz-s9b2.csv')  # nombre del dataset csv
 
     # 4. Insertar datos en HBase
     for index, row in df.iterrows():
-        row_key = f"mat_{index}".encode()
+        row_key = f'estudiante_{row["consecutivo"]}'.encode()
 
         data = {
-            b'institucion:nombre': str(row['Nombre del Establecimiento']).encode(),
-            b'institucion:sector': str(row['Sector']).encode(),
-            b'detalles:anio': str(row['Año']).encode(),
-            b'detalles:nivel': str(row['Nivel']).encode(),
-            b'detalles:matriculados': str(row['Total Matriculados']).encode(),
-            b'ubicacion:departamento': str(row['Departamento']).encode(),
-            b'ubicacion:municipio': str(row['Municipio']).encode()
+            b'info_academica:periodo_matricula': str(row['periodo_matricula']).encode(),
+            b'info_academica:codsnier': str(row['codsnier']).encode(),
+            b'info_academica:municipio_pro': str(row['municipio_pro']).encode(),
+            b'info_academica:cod_prog': str(row['cod_prog']).encode(),
+            b'info_academica:programa': str(row['programa']).encode(),
+
+            b'info_estudiante:pais_nac': str(row['pais_nac']).encode(),
+            b'info_estudiante:dpto_nac': str(row['dpto_nac']).encode(),
+            b'info_estudiante:ciudad_nac': str(row['ciudad_nac']).encode(),
+
+            b'ingreso:anno_primer_curso': str(row['anno_primer_curso']).encode(),
+            b'ingreso:s_primer_curso': str(row['s_primer_curso']).encode()
         }
 
         table.put(row_key, data)
 
-    print("Datos cargados exitosamente en HBase")
+    print("Datos cargados exitosamente")
 
-    # 5. Consultas
-    print("\n=== Primeros 3 registros ===")
+    # 5. Mostrar primeros 3 estudiantes
+    print("\n=== Primeros 3 registros de matrícula ===")
     count = 0
     for key, data in table.scan():
         if count < 3:
             print(f"\nID: {key.decode()}")
-            print(f"Institución: {data[b'institucion:nombre'].decode()}")
-            print(f"Año: {data[b'detalles:anio'].decode()}")
-            print(f"Matriculados: {data[b'detalles:matriculados'].decode()}")
+            print(f"Programa: {data[b'info_academica:programa'].decode()}")
+            print(f"País nacimiento: {data[b'info_estudiante:pais_nac'].decode()}")
+            print(f"Año ingreso: {data[b'ingreso:anno_primer_curso'].decode()}")
             count += 1
 
-    # 6. Total de matriculados por municipio (ejemplo básico)
-    print("\n=== Total de matriculados por municipio ===")
-    municipio_totales = {}
-    for key, data in table.scan():
-        municipio = data[b'ubicacion:municipio'].decode()
-        total = int(data[b'detalles:matriculados'].decode())
-        municipio_totales[municipio] = municipio_totales.get(municipio, 0) + total
+    # 6. Conteo de estudiantes por año de ingreso
+    print("\n=== Estudiantes por año de ingreso ===")
+    ingreso_stats = {}
+    for _, data in table.scan():
+        anno = data.get(b'ingreso:anno_primer_curso', b'').decode()
+        ingreso_stats[anno] = ingreso_stats.get(anno, 0) + 1
 
-    for municipio, total in list(municipio_totales.items())[:5]:  # Mostramos solo 5
-        print(f"{municipio}: {total} matriculados")
-
-    # 7. Actualizar el número de matriculados en un registro
-    print("\n=== Actualización de ejemplo ===")
-    table.put(b'mat_0', {b'detalles:matriculados': b'999'})
-    print("Registro 'mat_0' actualizado con 999 matriculados")
+    for año, total in ingreso_stats.items():
+        print(f"{año}: {total} estudiantes")
 
 except Exception as e:
     print(f"Error: {str(e)}")
+
 finally:
     connection.close()
+    print("Conexión cerrada")
